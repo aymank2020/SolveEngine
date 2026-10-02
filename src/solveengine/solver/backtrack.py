@@ -45,10 +45,16 @@ class BacktrackSolver:
         self._propagator = AC3Propagator(variables, constraints)
         self._state = SearchState(variables)
         self._node_limit: int | None = None
+        self._node_limit_reached = False
 
     @property
     def stats(self) -> SolverStats:
         return self._state.stats
+
+    @property
+    def node_limit_reached(self) -> bool:
+        """Whether search stopped before proving completeness."""
+        return self._node_limit_reached
 
     def set_node_limit(self, limit: int) -> None:
         """Set maximum number of nodes to explore before giving up."""
@@ -59,6 +65,7 @@ class BacktrackSolver:
 
         Returns a complete assignment if a solution exists.
         """
+        self._node_limit_reached = False
         # Initial propagation
         result = self._propagator.propagate(self._state.assignment)
         if not result.consistent:
@@ -69,6 +76,7 @@ class BacktrackSolver:
 
     def solve_all(self) -> list[dict[Variable, int]]:
         """Find all solutions."""
+        self._node_limit_reached = False
         solutions = list(self._iter_solutions())
         return solutions
 
@@ -86,6 +94,7 @@ class BacktrackSolver:
             return dict(self._state.assignment)
 
         if self._node_limit and self._state.stats.nodes_explored >= self._node_limit:
+            self._node_limit_reached = True
             return None
 
         unassigned = self._state.unassigned_variables()
@@ -95,6 +104,8 @@ class BacktrackSolver:
         conflict_set: set[Variable] = set()
 
         for value in values:
+            if self._node_limit_reached:
+                return
             if not var.domain.contains(value):
                 continue  # Value may have been pruned by earlier propagation
 
@@ -153,11 +164,17 @@ class BacktrackSolver:
             yield dict(self._state.assignment)
             return
 
+        if self._node_limit and self._state.stats.nodes_explored >= self._node_limit:
+            self._node_limit_reached = True
+            return
+
         unassigned = self._state.unassigned_variables()
         var = self._var_selector.select(unassigned, self._constraints, self._state.assignment)
         values = self._val_orderer.order(var, self._constraints, self._state.assignment)
 
         for value in values:
+            if self._node_limit_reached:
+                return
             if not var.domain.contains(value):
                 continue
             generations = {v: v.domain.generation for v in self._variables}
@@ -172,6 +189,8 @@ class BacktrackSolver:
                 if not prop_result.consistent:
                     consistent = False
                     self._state.stats.domain_wipeouts += 1
+            else:
+                consistent = self._check_consistent(var, value)
 
             if consistent:
                 yield from self._search_all()
