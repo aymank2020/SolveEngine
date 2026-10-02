@@ -44,21 +44,17 @@ pip install -e ".[dev]"
 ## Quick Start
 
 ```python
-from solveengine import Variable, Solver, AllDifferent
+from solveengine import Variable, BacktrackSolver, BinaryConstraint, AllDifferent
 
-# Create variables
 x = Variable("x", range(1, 10))
 y = Variable("y", range(1, 10))
 z = Variable("z", range(1, 10))
-
-# Add constraints
-solver = Solver()
-solver.add_variables(x, y, z)
-solver.add_constraint(AllDifferent(x, y, z))
-solver.add_constraint(lambda x, y: x + y > 5)
-
-# Solve
-solution = solver.solve()
+constraints = [
+    AllDifferent(x, y, z),
+    BinaryConstraint(x, y, lambda a, b: a + b > 5),
+]
+solution = BacktrackSolver([x, y, z], constraints).solve()
+print({var.name: value for var, value in solution.items()})
 ```
 
 ## Testing
@@ -70,3 +66,12 @@ pytest
 ## License
 
 MIT
+
+## JSON command line
+
+Run `solveengine problem.json` after installation, or
+`python -m solveengine.cli.runner problem.json` from a source checkout.
+ProblemSerializer supports AllDifferent, Sum, and Table constraints. Unsupported
+constraints fail explicitly rather than producing an incomplete saved model.
+
+Legacy JSON `neq` constraints require two variables and are enforced. With `--limit`, incomplete single-solution search prints UNKNOWN; incomplete enumeration is marked explicitly. Both return exit status 2, while proven unsatisfiability returns status 1. The library exposes `solver.node_limit_reached` without changing the existing solution return types.

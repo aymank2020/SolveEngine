@@ -25,3 +25,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+
+[project.scripts]
+solveengine = "solveengine.cli.runner:run_cli"
+
+[tool.setuptools.package-data]
+solveengine = ["py.typed"]

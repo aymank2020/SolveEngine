@@ -39,15 +39,19 @@ def run_cli(args: list[str] | None = None) -> int:
     parsed = parser.parse_args(args)
 
     try:
-        with open(parsed.input) as f:
+        with open(parsed.input, encoding="utf-8") as f:
             data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
+    except (OSError, UnicodeError, json.JSONDecodeError) as e:
         print(f"Error reading input: {e}", file=sys.stderr)
         return 1
 
     serializer = ProblemSerializer()
-    variables = serializer.deserialize_variables(data)
-    constraints = serializer.deserialize_constraints(data, variables)
+    try:
+        variables = serializer.deserialize_variables(data)
+        constraints = serializer.deserialize_constraints(data, variables)
+    except (KeyError, TypeError, ValueError) as e:
+        print(f"Invalid problem: {e}", file=sys.stderr)
+        return 1
 
     if parsed.verbose:
         print(f"Problem: {len(variables)} variables, {len(constraints)} constraints")
@@ -71,7 +75,8 @@ def run_cli(args: list[str] | None = None) -> int:
     if parsed.all:
         solutions = solver.solve_all()
         elapsed = time.perf_counter() - start
-        print(f"Found {len(solutions)} solution(s) in {elapsed:.3f}s")
+        suffix = " (incomplete: node limit reached)" if solver.node_limit_reached else ""
+        print(f"Found {len(solutions)} solution(s) in {elapsed:.3f}s{suffix}")
         for i, sol in enumerate(solutions, 1):
             assignment = {var.name: val for var, val in sol.items()}
             print(f"  Solution {i}: {assignment}")
@@ -79,6 +84,9 @@ def run_cli(args: list[str] | None = None) -> int:
         result = solver.solve()
         elapsed = time.perf_counter() - start
         if result is None:
+            if solver.node_limit_reached:
+                print(f"UNKNOWN: node limit reached ({elapsed:.3f}s)")
+                return 2
             print(f"UNSATISFIABLE ({elapsed:.3f}s)")
             return 1
         assignment = {var.name: val for var, val in result.items()}
@@ -89,7 +97,7 @@ def run_cli(args: list[str] | None = None) -> int:
         stats = solver.stats
         print(f"\nStats: nodes={stats.nodes_explored}, backtracks={stats.backtracks}")
 
-    return 0
+    return 2 if solver.node_limit_reached else 0
 
 
 if __name__ == "__main__":
